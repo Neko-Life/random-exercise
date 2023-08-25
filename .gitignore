@@ -1,5 +1,8 @@
 execlp
 main
+main-pipe
+one-pipe
+demo
 pipe
 test
 myecho

@@ -5,7 +5,6 @@
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
-  int ppipefd[2];
   int cpipefd[2];
   char buf;
   pid_t cpid;
@@ -14,14 +13,6 @@ int main(int argc, char *argv[]) {
     fprintf(stderr, "Usage: %s <string>\n", argv[0]);
     exit(EXIT_FAILURE);
   }
-
-  if (pipe(ppipefd) == -1) {
-    perror("ppipe");
-    exit(EXIT_FAILURE);
-  }
-
-  int preadfd = ppipefd[0];
-  int cwritefd = ppipefd[1];
 
   if (pipe(cpipefd) == -1) {
     perror("cpipe");
@@ -38,7 +29,6 @@ int main(int argc, char *argv[]) {
   }
 
   if (cpid == 0) { /* Child reads from pipe */
-    close(preadfd);
     close(pwritefd); /* Reader will see EOF */
 
     int status;
@@ -46,33 +36,26 @@ int main(int argc, char *argv[]) {
     /* fprintf(stderr, "cwritefd: %d\n", cwritefd); */
 
     status = dup2(creadfd, STDIN_FILENO);
-    close(creadfd);
-    status = dup2(cwritefd, STDOUT_FILENO);
-    close(cwritefd); /* Reader will see EOF */
-
     if (status == -1) {
-      perror("child");
+      close(creadfd);  /* Close unused read end */
+      puts("din\n");
       _exit(status);
     }
+
+    close(creadfd);
 
     /* puts("running myecho\n"); */
     execlp("./myecho", "./myecho", NULL);
 
-    perror("!");
+    puts("!\n");
     _exit(EXIT_FAILURE);
-  } else {           /* Parent writes argv[1] to pipe */
-    close(cwritefd); /* Reader will see EOF */
-    close(creadfd);  /* Close unused read end */
+  } else { /* Parent writes argv[1] to pipe */
+    close(creadfd); /* Close unused read end */
 
     write(pwritefd, argv[1], strlen(argv[1]));
-    write(pwritefd, "\n", 1);
+
     close(pwritefd); /* Reader will see EOF */
 
-    while (read(preadfd, &buf, 1) > 0)
-      putc(buf, stdout);
-    close(preadfd); /* Close unused read end */
-
-    printf("waiting for child\n");
     wait(NULL); /* Wait for child */
     exit(EXIT_SUCCESS);
   }
