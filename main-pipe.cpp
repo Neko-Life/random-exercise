@@ -142,7 +142,7 @@ int main() {
   size_t minimum_write = 0;
   char buffer[BUFFER_SIZE];
 
-  while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
+  while ((read_size = fread(buffer, 1, BUFFER_SIZE, input)) > 0) {
     fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
     size_t written_size = 0;
     while ((written_size += fwrite(buffer + written_size, 1,
@@ -163,6 +163,10 @@ int main() {
     if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
       while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
         fwrite(buffer, 1, read_size, stdout);
+
+        // check if this might be the last data we can read
+        if (read_size < BUFFER_SIZE)
+          break;
 
         // poll again to see if there's activity after read
         has_event = poll(pfds, 1, 0);
