@@ -132,6 +132,7 @@ int main() {
 
         fprintf(stderr, "child status: %d\n", status);
 
+        // kill child
         kill(cpid, SIGINT);
 
         if (pipe(cpipefd) == -1) {
@@ -179,7 +180,12 @@ int main() {
   /* pclose(out); */
   fprintf(stderr, "closed\n");
   fprintf(stderr, "waiting for child\n");
-  wait(NULL); /* Wait for child */
+
+  // kill child
+  kill(cpid, SIGINT);
+  int status;
+  waitpid(cpid, &status, 0); /* Wait for child */
+  fprintf(stderr, "child status: %d\n", status);
 
   running = false;
 
