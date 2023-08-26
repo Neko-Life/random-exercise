@@ -164,7 +164,7 @@ int main() {
           fwrite(buffer, 1, read_size, stdout);
 
           // poll again to see if there's activity after read
-          int has_event = poll(pfds, 1, 0);
+          has_event = poll(pfds, 1, 0);
           if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
             break;
         }
