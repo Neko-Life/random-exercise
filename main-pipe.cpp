@@ -28,6 +28,7 @@ static float volume = 100;
 static int ppipefd[2];
 static int cpipefd[2];
 static pid_t cpid;
+static pid_t rpid;
 
 static void listener() {
   float volstr;
@@ -39,13 +40,42 @@ static void listener() {
   }
 }
 
+static int run_reader(int prreadfd, int crwritefd) {
+  // request kernel to kill little self when parent dies
+  if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) {
+    perror("child reader");
+    _exit(EXIT_FAILURE);
+  }
+
+  close(prreadfd); /* Close unused read end */
+
+  int status;
+  status = dup2(crwritefd, STDOUT_FILENO);
+  close(crwritefd);
+  if (status == -1) {
+    perror("reader dout");
+    _exit(EXIT_FAILURE);
+  }
+
+  // redirect ffmpeg stderr to /dev/null
+  /* int dnull = open("/dev/null", O_WRONLY); */
+  /* dup2(dnull, STDERR_FILENO); */
+  /* close(dnull); */
+
+  execlp("ffmpeg", "ffmpeg", "-i", MUSIC_FILE, "-f", "s16le",
+         /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
+
+  perror("reader");
+  _exit(EXIT_FAILURE);
+}
+
 // p*fd = fd for parent
 // c*fd = fd for child
 static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   // request kernel to kill little self when parent dies
   if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) {
-    perror("child");
-    exit(1);
+    perror("child ffmpeg");
+    _exit(EXIT_FAILURE);
   }
 
   close(pwritefd); /* Close unused write end */
@@ -58,15 +88,15 @@ static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   status = dup2(creadfd, STDIN_FILENO);
   close(creadfd);
   if (status == -1) {
-    perror("din");
-    _exit(status);
+    perror("ffmpeg din");
+    _exit(EXIT_FAILURE);
   }
 
   status = dup2(cwritefd, STDOUT_FILENO);
   close(cwritefd);
   if (status == -1) {
-    perror("dout");
-    _exit(status);
+    perror("ffmpeg dout");
+    _exit(EXIT_FAILURE);
   }
 
   // redirect ffmpeg stderr to /dev/null
@@ -91,13 +121,27 @@ int main() {
   t.detach();
 
   // decode opus track
-  FILE *input = popen(
-      (std::string("opusdec ") + MUSIC_FILE " - 2>/dev/null").c_str(), "r");
-
-  if (!input) {
-    fprintf(stderr, "popen\n");
+  int rpipefd[2];
+  if (pipe(rpipefd) == -1) {
+    perror("rpipe");
     return EXIT_FAILURE;
   }
+  int prreadfd = rpipefd[0];
+  int crwritefd = rpipefd[1];
+
+  rpid = fork();
+  if (rpid == -1) {
+    perror("rfork");
+    return EXIT_FAILURE;
+  }
+
+  if (rpid == 0) { /* Child reads from pipe */
+    return run_reader(prreadfd, crwritefd);
+  }
+
+  close(crwritefd);
+
+  FILE *input = fdopen(prreadfd, "r");
 
   // prepare required pipes for bidirectional interprocess communication
   if (pipe(ppipefd) == -1) {
@@ -259,7 +303,8 @@ int main() {
   }
 
   // no more data to read from input, clean up
-  pclose(input);
+  fclose(input);
+  input = NULL;
   fprintf(stderr, "input closed\n");
 
   if (pwritefile)
@@ -270,12 +315,16 @@ int main() {
 
   // kill child
   kill(cpid, SIGTERM);
+  kill(rpid, SIGTERM);
 
   int status;
   fprintf(stderr, "waiting for child\n");
   waitpid(cpid, &status, 0); /* Wait for child */
-  fprintf(stderr, "killed child status: %d\n", status);
+  fprintf(stderr, "killed cchild status: %d\n", status);
+  waitpid(rpid, &status, 0); /* Wait for child */
+  fprintf(stderr, "killed rchild status: %d\n", status);
   assert(waitpid(cpid, &status, 0) == -1);
+  assert(waitpid(rpid, &status, 0) == -1);
 
   running = false;
 
