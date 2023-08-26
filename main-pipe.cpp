@@ -182,13 +182,18 @@ int main() {
         fclose(preadfile);
         preadfile = NULL;
 
+        // wait for child to finish transferring data
         int status;
-        waitpid(cpid, &status, 0); /* Wait for child */
-
+        waitpid(cpid, &status, 0);
         fprintf(stderr, "child status: %d\n", status);
 
         // kill child
         kill(cpid, SIGINT);
+
+        // wait for child until it completely died to prevent it becoming zombie
+        waitpid(cpid, &status, 0);
+        fprintf(stderr, "killed child status: %d\n", status);
+        assert(waitpid(cpid, &status, 0) == -1);
 
         // do the same setup routine as startup
         if (pipe(ppipefd) == -1) {
@@ -245,13 +250,16 @@ int main() {
   pclose(input);
   fprintf(stderr, "closed\n");
 
+  int status;
+  waitpid(cpid, &status, 0); /* Wait for child */
+
   // kill child
   kill(cpid, SIGINT);
 
-  fprintf(stderr, "waiting for child\n");
-  int status;
+  fprintf(stderr, "waiting for child, status: %d\n", status);
   waitpid(cpid, &status, 0); /* Wait for child */
-  fprintf(stderr, "child status: %d\n", status);
+  fprintf(stderr, "killed child status: %d\n", status);
+  assert(waitpid(cpid, &status, 0) == -1);
 
   running = false;
 
