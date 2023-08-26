@@ -1,14 +1,21 @@
+/*
+    Great exercise, now i know how i will implement effects for Musicat
+    !TODO: explore more on usage of different effects on ffmpeg
+*/
 #include <assert.h>
 #include <fcntl.h>
 #include <iostream>
 #include <poll.h>
+#include <stdio.h>
 #include <string>
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
-#define BUFFER_SIZE 4096
+static const size_t processing_buffer_size = BUFSIZ * 4;
+
+#define BUFFER_SIZE processing_buffer_size
 #define MINIMUM_WRITE 128000
 
 #define OUT_CMD "-"
@@ -17,37 +24,36 @@
 
 static bool running = true;
 
-float volume = 100;
-int ppipefd[2];
-int cpipefd[2];
-pid_t cpid;
+static float volume = 100;
+static int ppipefd[2];
+static int cpipefd[2];
+static pid_t cpid;
 
-void listener() {
+static void listener() {
   float volstr;
 
+  // listen to volume changes
   while (running && std::cin >> volstr) {
     if (volstr > (float)0)
       volume = volstr;
   }
 }
 
-std::string getCmd() {
-  return (std::string("ffmpeg -f s16le -i - ") + "-af \"volume=" +
-          std::to_string(volume / (float)100) + "\"" + " -f s16le " OUT_CMD);
-}
-
-int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
+// p*fd = fd for parent
+// c*fd = fd for child
+static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
+  // request kernel to kill little self when parent dies
   if (prctl(PR_SET_PDEATHSIG, SIGINT) == -1) {
     perror("child");
     exit(1);
   }
 
-  close(pwritefd); /* Reader will see EOF */
-  close(preadfd);
+  close(pwritefd); /* Close unused write end */
+  close(preadfd);  /* Close unused read end */
 
+  // redirect ffmpeg stdin and stdout to prepared pipes
+  // exit if unable to redirect
   int status;
-  /* fprintf(stderr, "creadfd: %d\n", creadfd); */
-  /* fprintf(stderr, "cwritefd: %d\n", cwritefd); */
 
   status = dup2(creadfd, STDIN_FILENO);
   close(creadfd);
@@ -63,20 +69,16 @@ int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
     _exit(status);
   }
 
-  if (status == -1) {
-    _exit(status);
-  }
-
+  // redirect ffmpeg stderr to /dev/null
   int dnull = open("/dev/null", O_WRONLY);
   dup2(dnull, STDERR_FILENO);
   close(dnull);
 
   execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-i", "-", "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
-         "-f", "s16le", "-bufsize", "64K", /*"-preset", "ultrafast",*/ OUT_CMD,
-         (char *)NULL);
+         "-f", "s16le", /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
-  perror("!");
+  perror("ffmpeg");
   _exit(EXIT_FAILURE);
 }
 
@@ -84,6 +86,7 @@ int main() {
   std::thread t(listener);
   t.detach();
 
+  // decode opus track
   FILE *input = popen(
       (std::string("opusdec ") + MUSIC_FILE " - 2>/dev/null").c_str(), "r");
 
@@ -92,6 +95,7 @@ int main() {
     return EXIT_FAILURE;
   }
 
+  // prepare required pipes for bidirectional interprocess communication
   if (pipe(ppipefd) == -1) {
     perror("ppipe");
     return EXIT_FAILURE;
@@ -106,6 +110,7 @@ int main() {
   int creadfd = cpipefd[0];
   int pwritefd = cpipefd[1];
 
+  // create a child
   cpid = fork();
   if (cpid == -1) {
     perror("fork");
@@ -114,64 +119,67 @@ int main() {
 
   if (cpid == 0) { /* Child reads from pipe */
     run_child(pwritefd, creadfd, preadfd, cwritefd);
-  } else {           /* Parent writes argv[1] to pipe */
+  } else {
     close(creadfd);  /* Close unused read end */
     close(cwritefd); /* Close unused write end */
 
-    /* fcntl(pwritefd, F_SETFL, fcntl(pwritefd, F_GETFL, 0) | O_NONBLOCK); */
-    /* fcntl(preadfd, F_SETFL, fcntl(preadfd, F_GETFL, 0) | O_NONBLOCK); */
-
+    // prepare required data for polling ffmpeg stdout
     nfds_t nfds = 1;
     struct pollfd pfds[1];
     pfds[0].events = POLLIN;
 
     pfds[0].fd = preadfd;
 
-    // associate fds with FILEs
+    // associate fds with FILEs for better write and read handling
     FILE *pwritefile = fdopen(pwritefd, "w");
     FILE *preadfile = fdopen(preadfd, "r");
 
+    // main loop
     int write_attempt = 0;
     float current_volume = volume;
     size_t read_size = 0;
     size_t minimum_write = 0;
     char buffer[BUFFER_SIZE];
+
     while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
-      /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
-
-      /* fflush(pwritefile); */
-
       fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
       size_t written_size = 0;
       while ((written_size += fwrite(buffer + written_size, 1,
                                      read_size - written_size, pwritefile)) <
              read_size)
-        ;
+        ; // keep writing until buffer entirely written
+
       minimum_write += written_size;
       fprintf(stderr, "minimum write: %ld\n", minimum_write);
 
+      // poll ffmpeg stdout
       int has_event = poll(pfds, 1, 0);
       const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
 
+      // if minimum_write was hit, meaning the fd was ready before
+      // the call to poll, poll is reporting for event, not reporting
+      // if data is waiting to read or not
       if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
         while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
           fwrite(buffer, 1, read_size, stdout);
 
+          // poll again to see if there's activity after read
           int has_event = poll(pfds, 1, 0);
           if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
             break;
         }
 
+        // reset state after successful write and read
         write_attempt = 0;
         minimum_write = 0;
       }
 
+      // recreate ffmpeg process to update filter chain
       if (volume != current_volume) {
-        /* pclose(out); */
-        /* out = nullptr; */
-        fclose(pwritefile); /* Reader will see EOF */
+        // close opened files
+        fclose(pwritefile);
         pwritefile = NULL;
-        fclose(preadfile); /* Reader will see EOF */
+        fclose(preadfile);
         preadfile = NULL;
 
         int status;
@@ -182,6 +190,7 @@ int main() {
         // kill child
         kill(cpid, SIGINT);
 
+        // do the same setup routine as startup
         if (pipe(ppipefd) == -1) {
           perror("ppipe");
           break;
@@ -198,6 +207,7 @@ int main() {
 
         cpid = fork();
         if (cpid == -1) {
+          // error clean up
           close(creadfd);
           close(pwritefd);
           close(cwritefd);
@@ -215,33 +225,26 @@ int main() {
         pwritefile = fdopen(pwritefd, "w");
         preadfile = fdopen(preadfd, "r");
 
+        // mark changes done
         current_volume = volume;
       }
     }
 
+    // no more data to read from input, clean up
     if (pwritefile)
-      fclose(pwritefile); /* Reader will see EOF */
+      fclose(pwritefile);
 
     if (preadfile)
       fclose(preadfile);
-    /* close(pwritefd); */
   }
 
-  /* out = popen(getCmd().c_str(), "w"); */
-
-  /* if (!out) { */
-  /*   fprintf(stderr, "popen\n"); */
-  /*   pclose(input); */
-  /*   return 1; */
-  /* } */
-
   pclose(input);
-  /* pclose(out); */
   fprintf(stderr, "closed\n");
-  fprintf(stderr, "waiting for child\n");
 
   // kill child
   kill(cpid, SIGINT);
+
+  fprintf(stderr, "waiting for child\n");
   int status;
   waitpid(cpid, &status, 0); /* Wait for child */
   fprintf(stderr, "child status: %d\n", status);
