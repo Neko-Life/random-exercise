@@ -134,7 +134,6 @@ int main() {
     float current_volume = volume;
     size_t read_size = 0;
     char buffer[BUFFER_SIZE];
-    usleep(1);
     while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
       assert(fwrite(buffer, 1, read_size, pwritefile) == read_size);
 
@@ -211,7 +210,6 @@ int main() {
         /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
 
         current_volume = volume;
-        usleep(1);
       }
     }
 
