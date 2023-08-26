@@ -222,6 +222,10 @@ int main() {
 
         close(creadfd);  /* Close unused read end */
         close(cwritefd); /* Close unused write end */
+
+        // update fd to poll
+        pfds[0].fd = preadfd;
+
         pwritefile = fdopen(pwritefd, "w");
         preadfile = fdopen(preadfd, "r");
 
