@@ -166,7 +166,9 @@ int main() {
 
         // poll again to see if there's activity after read
         has_event = poll(pfds, 1, 0);
-        if (!(has_event > 0) || !(pfds[0].revents & POLLIN))
+        if ((has_event > 0) && (pfds[0].revents & POLLIN))
+          continue;
+        else
           break;
       }
 
