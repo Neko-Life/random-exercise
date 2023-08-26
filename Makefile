@@ -1,10 +1,10 @@
-all: test pipe execlp myecho one-pipe demo # test-pipe
+all: test pipe execlp myecho one-pipe demo test-pipe
 
 test: main.cpp
 	g++ main.cpp -o test
 
 test-pipe: main-pipe.cpp
-	g++ main-pipe.cpp -o test-pipe
+	g++ -g main-pipe.cpp -o test-pipe
 
 pipe: pipe.cpp
 	g++ pipe.cpp -o pipe

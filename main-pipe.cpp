@@ -1,5 +1,8 @@
+#include <assert.h>
+#include <fcntl.h>
 #include <iostream>
 #include <string>
+#include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
 
@@ -12,7 +15,8 @@
 static bool running = true;
 
 float volume = 100;
-int pipefd[2];
+int ppipefd[2];
+int cpipefd[2];
 pid_t cpid;
 
 void listener() {
@@ -36,18 +40,25 @@ int main() {
   FILE *input = popen((std::string("opusdec ") + MUSIC_FILE " -").c_str(), "r");
 
   if (!input) {
-    perror("popen");
-    return 1;
+    fprintf(stderr, "popen\n");
+    return EXIT_FAILURE;
   }
 
-  if (pipe(pipefd) == -1) {
-    perror("pipe");
-    pclose(input);
-    return 1;
+  if (pipe(ppipefd) == -1) {
+    perror("ppipe");
+    exit(EXIT_FAILURE);
   }
 
-  int readfd = pipefd[0];
-  int writefd = pipefd[1];
+  int preadfd = ppipefd[0];
+  int cwritefd = ppipefd[1];
+
+  if (pipe(cpipefd) == -1) {
+    perror("cpipe");
+    exit(EXIT_FAILURE);
+  }
+
+  int creadfd = cpipefd[0];
+  int pwritefd = cpipefd[1];
 
   cpid = fork();
   if (cpid == -1) {
@@ -56,39 +67,85 @@ int main() {
   }
 
   if (cpid == 0) { /* Child reads from pipe */
+    close(preadfd);
+    close(pwritefd); /* Reader will see EOF */
+
     int status;
+    /* fprintf(stderr, "creadfd: %d\n", creadfd); */
+    /* fprintf(stderr, "cwritefd: %d\n", cwritefd); */
 
-    status = dup2(pipefd[0], STDIN_FILENO);
+    status = dup2(creadfd, STDIN_FILENO);
+    close(creadfd);
+    status = dup2(cwritefd, STDOUT_FILENO);
+    close(cwritefd); /* Reader will see EOF */
+
     if (status == -1) {
-      close(pipefd[1]); /* Reader will see EOF */
-      close(pipefd[0]); /* Close unused read end */
-      /* puts("din\n"); */
+      perror("child");
       _exit(status);
     }
-    close(pipefd[0]);
 
-    status = dup2(pipefd[1], STDOUT_FILENO);
-    if (status == -1) {
-      close(pipefd[1]); /* Reader will see EOF */
-      close(pipefd[0]); /* Close unused read end */
-      /* puts("dout\n"); */
-      _exit(status);
-    }
-    close(pipefd[0]); /* Close unused read end */
+    execlp(
+        "ffmpeg", "ffmpeg", "-f", "s16le", "-i", "-", "-af",
+        (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
+        "-f", "s16le", OUT_CMD, (char *)NULL);
 
-    execlp("./myecho", "./myecho");
-
-    puts("!\n");
+    perror("!");
     _exit(EXIT_FAILURE);
-  } else { /* Parent writes argv[1] to pipe */
-    write(pipefd[1], argv[1], strlen(argv[1]));
-    close(pipefd[1]); /* Reader will see EOF */
+  } else {           /* Parent writes argv[1] to pipe */
+    close(cwritefd); /* Reader will see EOF */
+    close(creadfd);  /* Close unused read end */
 
-    while (read(pipefd[0], &buf, 1) > 0)
-      putc(buf, stdout);
+    /* fcntl(pwritefd, F_SETFL, fcntl(pwritefd, F_GETFL, 0) | O_NONBLOCK); */
+    /* fcntl(preadfd, F_SETFL, fcntl(preadfd, F_GETFL, 0) | O_NONBLOCK); */
 
-    close(pipefd[0]); /* Close unused read end */
+    FILE *preadfile = fdopen(preadfd, "r");
+    FILE *pwritefile = fdopen(pwritefd, "w");
 
+    size_t total_written_size = 0;
+    float current_volume = volume;
+    size_t read_size = 0;
+    char buffer[BUFFER_SIZE];
+    while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
+      assert(fwrite(buffer, 1, read_size, pwritefile) == read_size);
+
+      fflush(pwritefile);
+
+      /* size_t written_size = 0; */
+      /* while ((written_size += */
+      /*         fwrite(buffer + written_size, 1, read_size - written_size, */
+      /*                pwritefile) < read_size)) */
+      /*   ; */
+      /* total_written_size += written_size; */
+
+      /* while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) */
+      /*   fwrite(buffer, 1, read_size, stdout); */
+
+      if (volume != current_volume) {
+        /* pclose(out); */
+        /* out = nullptr; */
+        fclose(preadfile);  /* Close unused read end */
+        fclose(pwritefile); /* Reader will see EOF */
+        pwritefile = NULL;
+        preadfile = NULL;
+
+        break;
+        /* out = popen(getCmd().c_str(), "w"); */
+
+        current_volume = volume;
+      }
+    }
+
+    /* while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) */
+    /*   fwrite(buffer, 1, read_size, stdout); */
+
+    if (pwritefile)
+      fclose(pwritefile); /* Reader will see EOF */
+    if (preadfile)
+      fclose(preadfile); /* Close unused read end */
+    close(pwritefd);     /* Reader will see EOF */
+    close(preadfd);      /* Close unused read end */
+
+    printf("waiting for child\n");
     wait(NULL); /* Wait for child */
     exit(EXIT_SUCCESS);
   }
@@ -100,25 +157,6 @@ int main() {
   /*   pclose(input); */
   /*   return 1; */
   /* } */
-
-  float current_volume = volume;
-  size_t read_size = 0;
-  char buffer[BUFFER_SIZE];
-  while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
-    size_t written_size = 0;
-    while ((written_size += write(writefd, buffer + written_size,
-                                  read_size - written_size) < read_size))
-      ;
-
-    if (volume != current_volume) {
-      /* pclose(out); */
-      /* out = nullptr; */
-
-      /* out = popen(getCmd().c_str(), "w"); */
-
-      current_volume = volume;
-    }
-  }
 
   pclose(input);
   /* pclose(out); */
