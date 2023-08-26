@@ -1,4 +1,4 @@
-all: test pipe execlp myecho one-pipe demo test-pipe
+all: test pipe execlp myecho one-pipe demo test-pipe one-pipe-ffmpeg
 
 test: main.cpp
 	g++ main.cpp -o test
@@ -20,3 +20,6 @@ myecho: myecho.cpp
 
 demo: demo.cpp
 	g++ demo.cpp -o demo
+
+one-pipe-ffmpeg: one-pipe-ffmpeg.cpp
+	g++ one-pipe-ffmpeg.cpp -o one-pipe-ffmpeg
