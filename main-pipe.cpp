@@ -157,6 +157,14 @@ int main() {
     int has_event = poll(pfds, 1, 0);
     const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
 
+    // check if this might be the last data we can read
+    if (read_size < BUFFER_SIZE) {
+      fprintf(stderr, "Last straw of data, closing pipe\n");
+      // close pipe to send eof to child
+      fclose(pwritefile);
+      pwritefile = NULL;
+    }
+
     // if minimum_write was hit, meaning the fd was ready before
     // the call to poll, poll is reporting for event, not reporting
     // if data is waiting to read or not
