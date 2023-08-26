@@ -107,11 +107,18 @@ int main() {
     run_child(pwritefd, creadfd, preadfd, cwritefd);
   } else {           /* Parent writes argv[1] to pipe */
     close(creadfd);  /* Close unused read end */
-    close(cwritefd); /* Close unused read end */
+    close(cwritefd); /* Close unused write end */
 
     /* fcntl(pwritefd, F_SETFL, fcntl(pwritefd, F_GETFL, 0) | O_NONBLOCK); */
     /* fcntl(preadfd, F_SETFL, fcntl(preadfd, F_GETFL, 0) | O_NONBLOCK); */
 
+    nfds_t nfds = 1;
+    struct pollfd pfds[1];
+    pfds[0].events = POLLIN;
+
+    pfds[0].fd = preadfd;
+
+    // associate fds with FILEs
     FILE *pwritefile = fdopen(pwritefd, "w");
     FILE *preadfile = fdopen(preadfd, "r");
 
@@ -131,17 +138,25 @@ int main() {
       /*   ; */
       /* total_written_size += written_size; */
 
-      int can_read = poll(, , 0);
+      int has_event = poll(pfds, 1, 0);
 
-      if (can_read > 0)
-        while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0)
+      if ((has_event > 0) && (pfds[0].revents & POLLIN)) {
+        while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
           fwrite(buffer, 1, read_size, stdout);
+
+          has_event = poll(pfds, 1, 0);
+          if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
+            break;
+        }
+      }
 
       if (volume != current_volume) {
         /* pclose(out); */
         /* out = nullptr; */
         fclose(pwritefile); /* Reader will see EOF */
         pwritefile = NULL;
+        fclose(preadfile); /* Reader will see EOF */
+        preadfile = NULL;
 
         int status;
         waitpid(cpid, &status, 0); /* Wait for child */
@@ -182,8 +197,9 @@ int main() {
         close(creadfd);  /* Close unused read end */
         close(cwritefd); /* Close unused read end */
         pwritefile = fdopen(pwritefd, "w");
+        preadfile = fdopen(preadfd, "r");
 
-        assert(fwrite(buffer, 1, read_size, pwritefile) == read_size);
+        /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
 
         current_volume = volume;
       }
@@ -191,6 +207,9 @@ int main() {
 
     if (pwritefile)
       fclose(pwritefile); /* Reader will see EOF */
+
+    if (preadfile)
+      fclose(preadfile);
     /* close(pwritefd); */
   }
 
