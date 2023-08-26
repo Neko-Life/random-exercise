@@ -118,145 +118,143 @@ int main() {
   }
 
   if (cpid == 0) { /* Child reads from pipe */
-    run_child(pwritefd, creadfd, preadfd, cwritefd);
-  } else {
-    close(creadfd);  /* Close unused read end */
-    close(cwritefd); /* Close unused write end */
-
-    // prepare required data for polling ffmpeg stdout
-    nfds_t nfds = 1;
-    struct pollfd pfds[1];
-    pfds[0].events = POLLIN;
-
-    pfds[0].fd = preadfd;
-
-    // associate fds with FILEs for better write and read handling
-    FILE *pwritefile = fdopen(pwritefd, "w");
-    FILE *preadfile = fdopen(preadfd, "r");
-
-    // main loop
-    int write_attempt = 0;
-    float current_volume = volume;
-    size_t read_size = 0;
-    size_t minimum_write = 0;
-    char buffer[BUFFER_SIZE];
-
-    while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
-      fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
-      size_t written_size = 0;
-      while ((written_size += fwrite(buffer + written_size, 1,
-                                     read_size - written_size, pwritefile)) <
-             read_size)
-        ; // keep writing until buffer entirely written
-
-      minimum_write += written_size;
-      fprintf(stderr, "minimum write: %ld\n", minimum_write);
-
-      // poll ffmpeg stdout
-      int has_event = poll(pfds, 1, 0);
-      const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
-
-      // if minimum_write was hit, meaning the fd was ready before
-      // the call to poll, poll is reporting for event, not reporting
-      // if data is waiting to read or not
-      if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
-        while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
-          fwrite(buffer, 1, read_size, stdout);
-
-          // poll again to see if there's activity after read
-          has_event = poll(pfds, 1, 0);
-          if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
-            break;
-        }
-
-        // reset state after successful write and read
-        write_attempt = 0;
-        minimum_write = 0;
-      }
-
-      // recreate ffmpeg process to update filter chain
-      if (volume != current_volume) {
-        // close opened files
-        fclose(pwritefile);
-        pwritefile = NULL;
-        fclose(preadfile);
-        preadfile = NULL;
-
-        // wait for child to finish transferring data
-        int status;
-        waitpid(cpid, &status, 0);
-        fprintf(stderr, "child status: %d\n", status);
-
-        // kill child
-        kill(cpid, SIGINT);
-
-        // wait for child until it completely died to prevent it becoming zombie
-        waitpid(cpid, &status, 0);
-        fprintf(stderr, "killed child status: %d\n", status);
-        assert(waitpid(cpid, &status, 0) == -1);
-
-        // do the same setup routine as startup
-        if (pipe(ppipefd) == -1) {
-          perror("ppipe");
-          break;
-        }
-        preadfd = ppipefd[0];
-        cwritefd = ppipefd[1];
-
-        if (pipe(cpipefd) == -1) {
-          perror("cpipe");
-          break;
-        }
-        creadfd = cpipefd[0];
-        pwritefd = cpipefd[1];
-
-        cpid = fork();
-        if (cpid == -1) {
-          // error clean up
-          close(creadfd);
-          close(pwritefd);
-          close(cwritefd);
-          close(preadfd);
-          perror("fork");
-          break;
-        }
-
-        if (cpid == 0) { /* Child reads from pipe */
-          return run_child(pwritefd, creadfd, preadfd, cwritefd);
-        }
-
-        close(creadfd);  /* Close unused read end */
-        close(cwritefd); /* Close unused write end */
-
-        // update fd to poll
-        pfds[0].fd = preadfd;
-
-        pwritefile = fdopen(pwritefd, "w");
-        preadfile = fdopen(preadfd, "r");
-
-        // mark changes done
-        current_volume = volume;
-      }
-    }
-
-    // no more data to read from input, clean up
-    if (pwritefile)
-      fclose(pwritefile);
-
-    if (preadfile)
-      fclose(preadfile);
+    return run_child(pwritefd, creadfd, preadfd, cwritefd);
   }
 
-  pclose(input);
-  fprintf(stderr, "closed\n");
+  close(creadfd);  /* Close unused read end */
+  close(cwritefd); /* Close unused write end */
 
-  int status;
-  waitpid(cpid, &status, 0); /* Wait for child */
+  // prepare required data for polling ffmpeg stdout
+  nfds_t nfds = 1;
+  struct pollfd pfds[1];
+  pfds[0].events = POLLIN;
+
+  pfds[0].fd = preadfd;
+
+  // associate fds with FILEs for better write and read handling
+  FILE *pwritefile = fdopen(pwritefd, "w");
+  FILE *preadfile = fdopen(preadfd, "r");
+
+  // main loop
+  int write_attempt = 0;
+  float current_volume = volume;
+  size_t read_size = 0;
+  size_t minimum_write = 0;
+  char buffer[BUFFER_SIZE];
+
+  while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
+    fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
+    size_t written_size = 0;
+    while ((written_size += fwrite(buffer + written_size, 1,
+                                   read_size - written_size, pwritefile)) <
+           read_size)
+      ; // keep writing until buffer entirely written
+
+    minimum_write += written_size;
+    fprintf(stderr, "minimum write: %ld\n", minimum_write);
+
+    // poll ffmpeg stdout
+    int has_event = poll(pfds, 1, 0);
+    const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
+
+    // if minimum_write was hit, meaning the fd was ready before
+    // the call to poll, poll is reporting for event, not reporting
+    // if data is waiting to read or not
+    if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
+      while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
+        fwrite(buffer, 1, read_size, stdout);
+
+        // poll again to see if there's activity after read
+        has_event = poll(pfds, 1, 0);
+        if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
+          break;
+      }
+
+      // reset state after successful write and read
+      write_attempt = 0;
+      minimum_write = 0;
+    }
+
+    // recreate ffmpeg process to update filter chain
+    if (volume != current_volume) {
+      // close opened files
+      fclose(pwritefile);
+      pwritefile = NULL;
+      fclose(preadfile);
+      preadfile = NULL;
+
+      // wait for child to finish transferring data
+      int status;
+      waitpid(cpid, &status, 0);
+      fprintf(stderr, "child status: %d\n", status);
+
+      // kill child
+      kill(cpid, SIGINT);
+
+      // wait for child until it completely died to prevent it becoming zombie
+      waitpid(cpid, &status, 0);
+      fprintf(stderr, "killed child status: %d\n", status);
+      assert(waitpid(cpid, &status, 0) == -1);
+
+      // do the same setup routine as startup
+      if (pipe(ppipefd) == -1) {
+        perror("ppipe");
+        break;
+      }
+      preadfd = ppipefd[0];
+      cwritefd = ppipefd[1];
+
+      if (pipe(cpipefd) == -1) {
+        perror("cpipe");
+        break;
+      }
+      creadfd = cpipefd[0];
+      pwritefd = cpipefd[1];
+
+      cpid = fork();
+      if (cpid == -1) {
+        // error clean up
+        close(creadfd);
+        close(pwritefd);
+        close(cwritefd);
+        close(preadfd);
+        perror("fork");
+        break;
+      }
+
+      if (cpid == 0) { /* Child reads from pipe */
+        return run_child(pwritefd, creadfd, preadfd, cwritefd);
+      }
+
+      close(creadfd);  /* Close unused read end */
+      close(cwritefd); /* Close unused write end */
+
+      // update fd to poll
+      pfds[0].fd = preadfd;
+
+      pwritefile = fdopen(pwritefd, "w");
+      preadfile = fdopen(preadfd, "r");
+
+      // mark changes done
+      current_volume = volume;
+    }
+  }
+
+  // no more data to read from input, clean up
+  pclose(input);
+  fprintf(stderr, "input closed\n");
+
+  if (pwritefile)
+    fclose(pwritefile);
+
+  if (preadfile)
+    fclose(preadfile);
 
   // kill child
   kill(cpid, SIGINT);
 
-  fprintf(stderr, "waiting for child, status: %d\n", status);
+  int status;
+  fprintf(stderr, "waiting for child\n");
   waitpid(cpid, &status, 0); /* Wait for child */
   fprintf(stderr, "killed child status: %d\n", status);
   assert(waitpid(cpid, &status, 0) == -1);
