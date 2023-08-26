@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #define BUFFER_SIZE 4096
+#define MINIMUM_WRITE 128000
 
 #define OUT_CMD "-"
 /* #define OUT_CMD "tcp://localhost:8080/listen" */
@@ -130,32 +131,39 @@ int main() {
     FILE *pwritefile = fdopen(pwritefd, "w");
     FILE *preadfile = fdopen(preadfd, "r");
 
-    size_t total_written_size = 0;
+    int write_attempt = 0;
     float current_volume = volume;
     size_t read_size = 0;
+    size_t minimum_write = 0;
     char buffer[BUFFER_SIZE];
     while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
-      assert(fwrite(buffer, 1, read_size, pwritefile) == read_size);
+      /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
 
       /* fflush(pwritefile); */
 
-      /* size_t written_size = 0; */
-      /* while ((written_size += */
-      /*         fwrite(buffer + written_size, 1, read_size - written_size, */
-      /*                pwritefile) < read_size)) */
-      /*   ; */
-      /* total_written_size += written_size; */
+      fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
+      size_t written_size = 0;
+      while ((written_size += fwrite(buffer + written_size, 1,
+                                     read_size - written_size, pwritefile)) <
+             read_size)
+        ;
+      minimum_write += written_size;
+      fprintf(stderr, "minimum write: %ld\n", minimum_write);
 
       int has_event = poll(pfds, 1, 0);
+      const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
 
-      if ((has_event > 0) && (pfds[0].revents & POLLIN)) {
+      if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
         while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
           fwrite(buffer, 1, read_size, stdout);
 
-          has_event = poll(pfds, 1, 0);
+          int has_event = poll(pfds, 1, 0);
           if (!((has_event > 0) && (pfds[0].revents & POLLIN)))
             break;
         }
+
+        write_attempt = 0;
+        minimum_write = 0;
       }
 
       if (volume != current_volume) {
@@ -203,11 +211,9 @@ int main() {
         }
 
         close(creadfd);  /* Close unused read end */
-        close(cwritefd); /* Close unused read end */
+        close(cwritefd); /* Close unused write end */
         pwritefile = fdopen(pwritefd, "w");
         preadfile = fdopen(preadfd, "r");
-
-        /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
 
         current_volume = volume;
       }
