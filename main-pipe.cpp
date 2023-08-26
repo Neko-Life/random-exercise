@@ -43,7 +43,7 @@ static void listener() {
 // c*fd = fd for child
 static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   // request kernel to kill little self when parent dies
-  if (prctl(PR_SET_PDEATHSIG, SIGINT) == -1) {
+  if (prctl(PR_SET_PDEATHSIG, SIGTERM) == -1) {
     perror("child");
     exit(1);
   }
@@ -189,7 +189,7 @@ int main() {
       fprintf(stderr, "child status: %d\n", status);
 
       // kill child
-      kill(cpid, SIGINT);
+      kill(cpid, SIGTERM);
 
       // wait for child until it completely died to prevent it becoming zombie
       waitpid(cpid, &status, 0);
@@ -251,7 +251,7 @@ int main() {
     fclose(preadfile);
 
   // kill child
-  kill(cpid, SIGINT);
+  kill(cpid, SIGTERM);
 
   int status;
   fprintf(stderr, "waiting for child\n");
