@@ -50,17 +50,25 @@ int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
 
   status = dup2(creadfd, STDIN_FILENO);
   close(creadfd);
-  status = dup2(cwritefd, STDOUT_FILENO);
-  close(cwritefd);
-
   if (status == -1) {
-    perror("child");
+    perror("din");
     _exit(status);
   }
 
-  /* int dnull = open("/dev/null", O_WRONLY); */
-  /* dup2(dnull, STDERR_FILENO); */
-  /* close(dnull); */
+  status = dup2(cwritefd, STDOUT_FILENO);
+  close(cwritefd);
+  if (status == -1) {
+    perror("dout");
+    _exit(status);
+  }
+
+  if (status == -1) {
+    _exit(status);
+  }
+
+  int dnull = open("/dev/null", O_WRONLY);
+  dup2(dnull, STDERR_FILENO);
+  close(dnull);
 
   execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-i", "-", "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
@@ -126,6 +134,7 @@ int main() {
     float current_volume = volume;
     size_t read_size = 0;
     char buffer[BUFFER_SIZE];
+    usleep(1);
     while ((read_size = fread(buffer, 1, BUFFER_SIZE, input))) {
       assert(fwrite(buffer, 1, read_size, pwritefile) == read_size);
 
@@ -202,6 +211,7 @@ int main() {
         /* assert(fwrite(buffer, 1, read_size, pwritefile) == read_size); */
 
         current_volume = volume;
+        usleep(1);
       }
     }
 
