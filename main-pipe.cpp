@@ -13,12 +13,12 @@
 #include <thread>
 #include <unistd.h>
 
-static const size_t processing_buffer_size = BUFSIZ * 4;
+static const size_t processing_buffer_size = BUFSIZ * 5;
 
 #define BUFFER_SIZE processing_buffer_size
 #define MINIMUM_WRITE 128000
 
-#define OUT_CMD "-"
+#define OUT_CMD "pipe:1"
 /* #define OUT_CMD "tcp://localhost:8080/listen" */
 #define MUSIC_FILE "track.opus"
 
@@ -74,9 +74,13 @@ static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   dup2(dnull, STDERR_FILENO);
   close(dnull);
 
-  execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-i", "-", "-af",
+  std::string block_size_str("16");
+
+  execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-i", "pipe:0", "-blocksize",
+         block_size_str.c_str(), "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
-         "-f", "s16le", /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
+         "-f", "s16le",
+         /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("ffmpeg");
   _exit(EXIT_FAILURE);
