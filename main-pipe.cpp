@@ -65,8 +65,8 @@ static int run_reader(int prreadfd, int crwritefd) {
   dup2(dnull, STDERR_FILENO);
   close(dnull);
 
-  execlp("ffmpeg", "ffmpeg", "-v", "debug", "-i", MUSIC_FILE, "-flush_packets",
-         "1", "-f", "s16le", "-ac", "2", "-ar", "48000",
+  execlp("ffmpeg", "ffmpeg", "-v", "debug", "-i", MUSIC_FILE, "-f", "s16le",
+         "-ac", "2", "-ar", "48000",
          /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("reader");
@@ -111,7 +111,7 @@ static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   execlp("ffmpeg", "ffmpeg", "-v", "debug", "-f", "s16le", "-ac", "2", "-ar",
          "48000", "-i", "pipe:0", "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
-         "-flush_packets", "1", "-f", "u8", "-ac", "2", "-ar", "48000",
+         "-f", "u16le", "-ac", "2", "-ar", "48000",
          /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("ffmpeg");
