@@ -5,7 +5,9 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <iostream>
+#include <limits.h>
 #include <poll.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string>
 #include <sys/prctl.h>
@@ -13,14 +15,13 @@
 #include <thread>
 #include <unistd.h>
 
-static const size_t processing_buffer_size = BUFSIZ * 5;
-
 #define BUFFER_SIZE processing_buffer_size
-#define MINIMUM_WRITE 128000
 
 #define OUT_CMD "pipe:1"
 /* #define OUT_CMD "tcp://localhost:8080/listen" */
 #define MUSIC_FILE "track.opus"
+
+static const size_t processing_buffer_size = BUFSIZ;
 
 static bool running = true;
 
@@ -58,11 +59,12 @@ static int run_reader(int prreadfd, int crwritefd) {
   }
 
   // redirect ffmpeg stderr to /dev/null
-  /* int dnull = open("/dev/null", O_WRONLY); */
-  /* dup2(dnull, STDERR_FILENO); */
-  /* close(dnull); */
+  int dnull = open("/dev/null", O_WRONLY);
+  dup2(dnull, STDERR_FILENO);
+  close(dnull);
 
-  execlp("ffmpeg", "ffmpeg", "-i", MUSIC_FILE, "-f", "s16le",
+  execlp("ffmpeg", "ffmpeg", "-v", "debug", "-i", MUSIC_FILE, "-flush_packets",
+         "1", "-f", "s16le", "-ac", "2", "-ar", "48000",
          /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("reader");
@@ -100,16 +102,14 @@ static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   }
 
   // redirect ffmpeg stderr to /dev/null
-  int dnull = open("/dev/null", O_WRONLY);
-  dup2(dnull, STDERR_FILENO);
-  close(dnull);
+  /* int dnull = open("/dev/null", O_WRONLY); */
+  /* dup2(dnull, STDERR_FILENO); */
+  /* close(dnull); */
 
-  std::string block_size_str("16");
-
-  execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-i", "pipe:0", "-blocksize",
-         block_size_str.c_str(), "-af",
+  execlp("ffmpeg", "ffmpeg", "-v", "debug", "-f", "s16le", "-ac", "2", "-ar",
+         "48000", "-i", "pipe:0", "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
-         "-f", "s16le",
+         "-flush_packets", "1", "-f", "u8", "-ac", "2", "-ar", "48000",
          /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("ffmpeg");
@@ -140,6 +140,7 @@ int main() {
   }
 
   close(crwritefd);
+  crwritefd = -1;
 
   FILE *input = fdopen(prreadfd, "r");
 
@@ -172,78 +173,90 @@ int main() {
   close(creadfd);  /* Close unused read end */
   close(cwritefd); /* Close unused write end */
 
-  // prepare required data for polling ffmpeg stdout
-  nfds_t nfds = 1;
-  struct pollfd pfds[1];
-  pfds[0].events = POLLIN;
+  creadfd = -1;
+  cwritefd = -1;
 
-  pfds[0].fd = preadfd;
+  // prepare required data for polling
+  struct pollfd prfds[1], pwfds[1];
+  prfds[0].events = POLLIN;
+  pwfds[0].events = POLLOUT;
 
-  // associate fds with FILEs for better write and read handling
-  FILE *pwritefile = fdopen(pwritefd, "w");
-  FILE *preadfile = fdopen(preadfd, "r");
+  prfds[0].fd = preadfd;
+  pwfds[0].fd = pwritefd;
 
   // main loop
-  int write_attempt = 0;
   float current_volume = volume;
   size_t read_size = 0;
-  size_t minimum_write = 0;
+
   char buffer[BUFFER_SIZE];
+  bool read_input = true;
+  size_t written_size = 0;
 
-  while ((read_size = fread(buffer, 1, BUFFER_SIZE, input)) > 0) {
-    fprintf(stderr, "attempt to write: %d\n", ++write_attempt);
-    size_t written_size = 0;
-    while ((written_size += fwrite(buffer + written_size, 1,
-                                   read_size - written_size, pwritefile)) <
-           read_size)
-      ; // keep writing until buffer entirely written
-
-    minimum_write += written_size;
-    fprintf(stderr, "minimum write: %ld\n", minimum_write);
-
-    // poll ffmpeg stdout
-    int has_event = poll(pfds, 1, 0);
-    const bool read_ready = (has_event > 0) && (pfds[0].revents & POLLIN);
-
-    // check if this might be the last data we can read
-    if (read_size < BUFFER_SIZE) {
-      fprintf(stderr, "Last straw of data, closing pipe\n");
-      // close pipe to send eof to child
-      fclose(pwritefile);
-      pwritefile = NULL;
+  while (true) {
+    if (read_input) {
+      read_size = fread(buffer, 1, BUFFER_SIZE, input);
+      if (!(read_size > 0))
+        break;
     }
 
-    // if minimum_write was hit, meaning the fd was ready before
-    // the call to poll, poll is reporting for event, not reporting
-    // if data is waiting to read or not
-    if (read_ready || (minimum_write >= MINIMUM_WRITE)) {
-      while ((read_size = fread(buffer, 1, BUFFER_SIZE, preadfile)) > 0) {
-        fwrite(buffer, 1, read_size, stdout);
+    // we don't know how much the resulting buffer is, so the best reliable way
+    // with no optimization is to keep polling and write/read byte by byte.
+    // polling will only tells whether an fd can be operated on, we won't
+    // know if the write/read will be blocked in the middle of operation
+    // (waiting for the exact requested amount of space/data to be available)
+    // if we were to do more than a byte at a time
 
-        // check if this might be the last data we can read
-        if (read_size < BUFFER_SIZE)
-          break;
+    int write_has_event = poll(pwfds, 1, 0);
+    bool write_ready = (write_has_event > 0) && (pwfds[0].revents & POLLOUT);
+    while (write_ready &&
+           ((written_size += write(pwritefd, buffer + written_size, 1)) <
+            read_size)) {
+      write_has_event = poll(pwfds, 1, 0);
+      write_ready = (write_has_event > 0) && (pwfds[0].revents & POLLOUT);
+    }; // keep writing until buffer entirely written
 
-        // poll again to see if there's activity after read
-        has_event = poll(pfds, 1, 0);
-        if ((has_event > 0) && (pfds[0].revents & POLLIN))
-          continue;
-        else
-          break;
+    if (written_size < read_size)
+      read_input = false;
+    else {
+      read_input = true;
+      written_size = 0;
+    }
+
+    // poll ffmpeg stdout
+    int read_has_event = poll(prfds, 1, 0);
+    bool read_ready = (read_has_event > 0) && (prfds[0].revents & POLLIN);
+    size_t input_read_size = 0;
+
+    if (read_ready) {
+      int read_count = 0;
+
+      uint8_t out_buffer;
+      while (read_ready &&
+             ((input_read_size = read(preadfd, &out_buffer, 1)) > 0)) {
+        fwrite(&out_buffer, 1, input_read_size, stdout);
+
+        read_has_event = poll(prfds, 1, 0);
+        read_ready = (read_has_event > 0) && (prfds[0].revents & POLLIN);
       }
-
-      // reset state after successful write and read
-      write_attempt = 0;
-      minimum_write = 0;
     }
 
     // recreate ffmpeg process to update filter chain
     if (volume != current_volume) {
-      // close opened files
-      fclose(pwritefile);
-      pwritefile = NULL;
-      fclose(preadfile);
-      preadfile = NULL;
+      // close write fd, we can now safely read until
+      // eof without worrying about polling and blocked read
+      close(pwritefd);
+
+      uint8_t rest_buffer[BUFFER_SIZE];
+      // read the rest of data before closing current instance
+      while ((input_read_size = read(preadfd, rest_buffer, BUFFER_SIZE)) > 0) {
+        fwrite(buffer, 1, input_read_size, stdout);
+      }
+
+      // close read fd
+      close(preadfd);
+
+      pwritefd = -1;
+      preadfd = -1;
 
       // wait for child to finish transferring data
       int status;
@@ -267,6 +280,7 @@ int main() {
       cwritefd = ppipefd[1];
 
       if (pipe(cpipefd) == -1) {
+        // fds will be closed on exit
         perror("cpipe");
         break;
       }
@@ -275,11 +289,7 @@ int main() {
 
       cpid = fork();
       if (cpid == -1) {
-        // error clean up
-        close(creadfd);
-        close(pwritefd);
-        close(cwritefd);
-        close(preadfd);
+        // fds will be closed on exit
         perror("fork");
         break;
       }
@@ -291,32 +301,44 @@ int main() {
       close(creadfd);  /* Close unused read end */
       close(cwritefd); /* Close unused write end */
 
-      // update fd to poll
-      pfds[0].fd = preadfd;
+      creadfd = -1;
+      cwritefd = -1;
 
-      pwritefile = fdopen(pwritefd, "w");
-      preadfile = fdopen(preadfd, "r");
+      // update fd to poll
+      prfds[0].fd = preadfd;
+      pwfds[0].fd = pwritefd;
 
       // mark changes done
       current_volume = volume;
     }
   }
 
-  // no more data to read from input, clean up
+  // exiting, clean up
   fclose(input);
   input = NULL;
-  fprintf(stderr, "input closed\n");
 
-  if (pwritefile)
-    fclose(pwritefile);
+  if (creadfd > -1)
+    close(creadfd);
+  if (pwritefd > -1)
+    close(pwritefd);
+  if (cwritefd > -1)
+    close(cwritefd);
+  if (preadfd > -1)
+    close(preadfd);
 
-  if (preadfile)
-    fclose(preadfile);
+  creadfd = -1;
+  pwritefd = -1;
+  cwritefd = -1;
+  preadfd = -1;
+
+  fprintf(stderr, "fds closed\n");
 
   // kill child
   kill(cpid, SIGTERM);
   kill(rpid, SIGTERM);
 
+  // wait for childs to make sure they're dead and
+  // prevent them to become zombies
   int status;
   fprintf(stderr, "waiting for child\n");
   waitpid(cpid, &status, 0); /* Wait for child */
