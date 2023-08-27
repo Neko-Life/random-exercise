@@ -21,7 +21,9 @@
 /* #define OUT_CMD "tcp://localhost:8080/listen" */
 #define MUSIC_FILE "track.opus"
 
-static const size_t processing_buffer_size = BUFSIZ;
+// careful adjusting this, need to make sure it won't
+// block when written at once
+static const size_t processing_buffer_size = BUFSIZ * 8;
 
 static bool running = true;
 
@@ -206,11 +208,14 @@ int main() {
     // (waiting for the exact requested amount of space/data to be available)
     // if we were to do more than a byte at a time
 
+    // we can do chunk writing here as as long as the output keeps being read,
+    // the buffer will keep being consumed by ffmpeg, as long as it's not too
+    // big
     int write_has_event = poll(pwfds, 1, 0);
     bool write_ready = (write_has_event > 0) && (pwfds[0].revents & POLLOUT);
     while (write_ready &&
-           ((written_size += write(pwritefd, buffer + written_size, 1)) <
-            read_size)) {
+           ((written_size += write(pwritefd, buffer + written_size,
+                                   read_size - written_size)) < read_size)) {
       write_has_event = poll(pwfds, 1, 0);
       write_ready = (write_has_event > 0) && (pwfds[0].revents & POLLOUT);
     }; // keep writing until buffer entirely written
