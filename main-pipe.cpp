@@ -120,7 +120,7 @@ static int run_child(int pwritefd, int creadfd, int preadfd, int cwritefd) {
   execlp("ffmpeg", "ffmpeg", "-v", "debug", "-f", "s16le", "-ac", "2", "-ar",
          "48000", "-i", "pipe:0", "-af",
          (std::string("volume=") + std::to_string(volume / (float)100)).c_str(),
-         "-f", "s16le", "-ac", "2", "-ar", "48000",
+         "-f", "opus", "-ac", "2", "-ar", "48000",
          /*"-preset", "ultrafast",*/ OUT_CMD, (char *)NULL);
 
   perror("ffmpeg");
@@ -268,13 +268,16 @@ int main() {
           input_read_size = 0;
         }
 
+        // ALWAYS do polling to decide whether to read again
         read_has_event = poll(prfds, 1, 0);
         read_ready = (read_has_event > 0) && (prfds[0].revents & POLLIN);
       }
 
       // empties the last buffer that usually size less than BUFFER_SIZE
-      // which expected to be always left with 0 remainder when divided by
-      // READ_CHUNK_SIZE
+      // which usually left with 0 remainder when divided by
+      // READ_CHUNK_SIZE, otherwise can means ffmpeg have chunked audio packets
+      // with its specific size as its output when specifying some other
+      // containerized format
       fprintf(stderr, "Current last written to stdout: %ld\n", input_read_size);
       if (input_read_size > 0)
         fwrite(out_buffer, 1, input_read_size, stdout);
@@ -286,15 +289,13 @@ int main() {
       // eof without worrying about polling and blocked read
       close(pwritefd);
 
-      // this is no longer needed as the buffer is guaranteed empty after above
-      // operation, but should be checked and emptied when the main loop breaks
-      //
-      // uint8_t rest_buffer[BUFFER_SIZE];
-      // // read the rest of data before closing current instance
-      // while ((input_read_size = read(preadfd, rest_buffer, BUFFER_SIZE)) > 0)
-      // {
-      //   fwrite(buffer, 1, input_read_size, stdout);
-      // }
+      // always read the rest of data after closing ffmpeg stdin before closing
+      // its stdout
+      uint8_t rest_buffer[BUFFER_SIZE];
+      while ((input_read_size = read(preadfd, rest_buffer, BUFFER_SIZE)) > 0) {
+        fprintf(stderr, "Written pre-reloading chain: %ld\n", input_read_size);
+        fwrite(buffer, 1, input_read_size, stdout);
+      }
 
       // close read fd
       close(preadfd);
