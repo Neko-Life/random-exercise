@@ -246,8 +246,6 @@ int main() {
     size_t input_read_size = 0;
 
     if (read_ready) {
-      int read_count = 0;
-
       // with known chunk size that always guarantee correct read size that
       // empties ffmpeg buffer, poll will report correctly that the pipe
       // is really empty so we know exactly when to stop reading, this is
@@ -304,18 +302,12 @@ int main() {
       preadfd = -1;
 
       // wait for child to finish transferring data
-      int status;
-      waitpid(cpid, &status, 0);
-      fprintf(stderr, "child status: %d\n", status);
-
       // we don't need to kill here as ffmpeg will exit
       // when the write end (its stdin) of pipe is closed
-      // kill child
-      // kill(cpid, SIGTERM);
-
       // wait for child until it completely died to prevent it becoming zombie
+      int status = 0;
       waitpid(cpid, &status, 0);
-      fprintf(stderr, "killed child status: %d\n", status);
+      fprintf(stderr, "child status: %d\n", status);
       assert(waitpid(cpid, &status, 0) == -1);
 
       // do the same setup routine as startup
