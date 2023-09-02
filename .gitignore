@@ -7,5 +7,6 @@ pipe
 test
 myecho
 test-pipe
+test-fifo
 one-pipe-ffmpeg
 track.opus
