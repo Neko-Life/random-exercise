@@ -32,3 +32,6 @@ sqd: square_digits.cpp
 
 i_v: i_v.cpp
 	g++ -g i_v.cpp -o i_v
+
+ilesik-big-num: ilesik-big-num.cpp
+	g++ -g ilesik-big-num.cpp -o ilesik-big-num
