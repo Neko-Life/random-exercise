@@ -27,6 +27,9 @@
 
 #endif
 
+static inline const std::string integer_type_max_str =
+    std::to_string(INTEGER_TYPE_MAX);
+
 struct intinfinity_t {
   v_container<short> _v_s;
   bool negative;
@@ -158,6 +161,16 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
   return false;
 }
 
+std::string intinfinity_t_to_string(const intinfinity_t &i) {
+  std::string result = "";
+
+  for (const short s : i._v_s) {
+    result += std::to_string(s);
+  }
+
+  return result;
+}
+
 std::string add(const std::string &a, const std::string &b) {
   // check whether a and b should be swapped, for better performance, the
   // smaller gets added to the bigger
@@ -176,20 +189,16 @@ std::string add(const std::string &a, const std::string &b) {
   print_vs(a_v);
   print_vs(b_v);
 
-  while (sub_vs(b_v)) {
-    add_vs(a_v);
+  for (size_t i = b_v._v_s.size(); i >= 0; i--) {
+// !TODO
+    if (i == 0)
+      break;
   }
 
   print_vs(a_v);
   print_vs(b_v);
 
-  std::string result = "";
-
-  for (const short s : a_v) {
-    result += std::to_string(s);
-  }
-
-  return result;
+  return intinfinity_t_to_string(a_v);
 }
 
 int main(const int argc, const char *argv[]) {
@@ -199,3 +208,13 @@ int main(const int argc, const char *argv[]) {
   /* assert(result == "5000"); */
   return 0;
 }
+
+/*
+   123
+   210
+   333
+
+   666
+   444
+   1110
+*/
