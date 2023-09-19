@@ -1,6 +1,6 @@
 {
   "configurations": {
-    "Launch": {
+    "Launch sqd": {
       "adapter": "vscode-cpptools",
       "configuration": {
         "request": "launch",
@@ -17,11 +17,13 @@
         ]
       }
     },
-    "Attach": {
+    "Launch i_v": {
       "adapter": "vscode-cpptools",
       "configuration": {
-        "request": "attach",
-        "program": "${workspaceRoot}/sqd",
+        "request": "launch",
+        "program": "${workspaceRoot}/i_v",
+        "cwd": "${workspaceRoot}",
+        "externalConsole": true,
         "MIMode": "gdb",
         "setupCommands": [
           {
