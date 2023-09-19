@@ -26,3 +26,6 @@ demo: demo.cpp
 
 one-pipe-ffmpeg: one-pipe-ffmpeg.cpp
 	g++ one-pipe-ffmpeg.cpp -o one-pipe-ffmpeg
+
+sqd: square_digits.cpp
+	g++ -g square_digits.cpp -o sqd
