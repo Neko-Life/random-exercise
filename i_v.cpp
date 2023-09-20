@@ -33,20 +33,62 @@ static inline const std::string integer_type_max_str =
 struct intinfinity_t {
   v_container<short> _v_s;
   bool negative;
+  bool is_valid;
+  std::string err;
 };
+
+std::string inintinfinity_t_get_err(intinfinity_t &i) {
+  if (!i.err.length()) {
+    return i.err;
+  }
+
+  const std::string ret = i.err;
+
+  i.err = "";
+
+  return ret;
+}
+
+bool is_char_int(const char &c) {
+  static constexpr const char int_chars[] = "0123456789";
+
+  for (const char &ic : int_chars) {
+    if (ic == c)
+      return true;
+  }
+
+  return false;
+}
 
 void str_to_vs(intinfinity_t &container, const std::string &str) {
   v_container<short> result;
 
+  bool first_idx = true;
   for (const char &c : str) {
-    if (c == '-') {
-      container.negative = true;
+    if (first_idx) {
+      first_idx = false;
+
+      if (c == '-') {
+        container.negative = true;
+        continue;
+      }
+
+      if (c == '+') {
+        continue;
+      }
     }
+
+    if (is_char_int(c)) {
+      container.is_valid = false;
+      container.err = std::string("Invalid integer: ") + c;
+      return;
+    };
 
     result.push_back(c - '0');
   }
 
   container._v_s = result;
+  container.is_valid = true;
 }
 
 void print_vs(const intinfinity_t &vs) {
@@ -92,7 +134,11 @@ int sub_vs(v_container<short> &vs) {
 }
 
 int add_vs(v_container<short> &vs) {
+#ifdef CAPABILITY_PUSH_FRONT
   size_t vs_len = vs.size();
+#else
+  const size_t vs_len = vs.size();
+#endif
 
   size_t sub_idx = 1;
   size_t last_idx = vs_len - sub_idx;
@@ -190,7 +236,7 @@ std::string add(const std::string &a, const std::string &b) {
   print_vs(b_v);
 
   for (size_t i = b_v._v_s.size(); i >= 0; i--) {
-// !TODO
+    // !TODO
     if (i == 0)
       break;
   }
