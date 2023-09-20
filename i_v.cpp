@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+// #define MY_DEBUG
 // #define USE_DEQUE
 
 #ifndef USE_DEQUE
@@ -95,11 +96,13 @@ int str_to_vs(intinfinity_t &container, const std::string &str) {
 }
 
 void print_vs(const intinfinity_t &vs) {
+#ifdef MY_DEBUG
   for (const short s : vs._v_s) {
     fprintf(stderr, "%d ", s);
   }
 
   puts("");
+#endif
 }
 
 int sub_vs(v_container<short> &vs) {
