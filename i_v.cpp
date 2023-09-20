@@ -212,11 +212,41 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
 std::string intinfinity_t_to_string(const intinfinity_t &i) {
   std::string result = "";
 
+  bool first_idx = true;
   for (const short s : i._v_s) {
+    if (first_idx) {
+      first_idx = false;
+
+      if (s == 0)
+        continue;
+    }
+
     result += std::to_string(s);
   }
 
   return result;
+}
+
+void add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
+                  const short bi) {
+  const short ri = ai + bi;
+  const bool ri2digit = ri > 9;
+
+  vs._v_s[i] = ri > 0 ? ri % 10 : 0;
+
+  if (ri2digit) {
+    if (i == 0) {
+      // this should never possibly happen!! check your logic!
+
+      fprintf(stderr, "add: vector overflow: index reached 0: %zu\n",
+              vs._v_s.size());
+
+      return;
+    }
+
+    const size_t next_idx = i - 1;
+    add_digit_at(vs, next_idx, vs._v_s[next_idx], 1);
+  }
 }
 
 std::string add(const std::string &a, const std::string &b) {
@@ -227,18 +257,42 @@ std::string add(const std::string &a, const std::string &b) {
     swap = true;
   }
 
-  // with the swap logic, a_v will always contain the bigger
+  // with the swap logic, a_v should always contain the bigger
   // number than b_v
+  const std::string &bigger_n = swap ? b : a;
+  const std::string &smaller_n = swap ? a : b;
+
   intinfinity_t a_v;
+  // we store the result in a_v, so add a digit in front
+  // as we know a_v is always bigger than b_v, the resulting
+  // value can never be bigger than a_v*2
+  a_v._v_s.reserve(1);
+
   intinfinity_t b_v;
-  str_to_vs(a_v, swap ? b : a);
-  str_to_vs(b_v, swap ? a : b);
+  str_to_vs(a_v, bigger_n);
+  str_to_vs(b_v, smaller_n);
 
   print_vs(a_v);
   print_vs(b_v);
 
-  for (size_t i = b_v._v_s.size(); i >= 0; i--) {
-    // !TODO
+  /*
+     index difference
+            vector length
+     diff = 5-4 = 1
+     b = 3 (max index accessible)
+     a = b + diff
+   */
+
+  const size_t idx_diff = a_v._v_s.size() - b_v._v_s.size();
+
+  for (size_t i = (b_v._v_s.size() - 1); i >= 0; i--) {
+    const size_t a_idx = i + idx_diff;
+
+    const short ai = a_v._v_s[a_idx];
+    const short bi = b_v._v_s[i];
+
+    add_digit_at(a_v, a_idx, ai, bi);
+
     if (i == 0)
       break;
   }
