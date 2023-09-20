@@ -22,14 +22,14 @@
 // try to have signed type here,
 // we would want to have subtraction too
 // later on!
-#ifndef INTEGER_TYPE_MAX
-
-#define INTEGER_TYPE_MAX INT64_MAX
-
-#endif
-
-static inline const std::string integer_type_max_str =
-    std::to_string(INTEGER_TYPE_MAX);
+// #ifndef INTEGER_TYPE_MAX
+//
+// #define INTEGER_TYPE_MAX INT64_MAX
+//
+// #endif
+//
+// static inline const std::string integer_type_max_str =
+//     std::to_string(INTEGER_TYPE_MAX);
 
 struct intinfinity_t {
   v_container<short> _v_s;
@@ -68,9 +68,10 @@ bool is_char_int(const char &c) {
 int str_to_vs(intinfinity_t &container, const std::string &str) {
   // add a digit in front to make sure there's enough space
   // in the container
-  v_container<short> result(1);
+  v_container<short> result(str.length() + 1);
 
   bool first_idx = true;
+  size_t idx = 1;
   for (const char &c : str) {
     if (first_idx) {
       first_idx = false;
@@ -91,11 +92,16 @@ int str_to_vs(intinfinity_t &container, const std::string &str) {
       return 1;
     };
 
-    result.push_back(c - '0');
+    result[idx++] = c - '0';
   }
 
   container._v_s = result;
   container.is_valid = true;
+
+  // initialize negative member
+  if (container.negative != true)
+    container.negative = false;
+
   return 0;
 }
 
@@ -107,80 +113,6 @@ void print_vs(const intinfinity_t &vs) {
 
   puts("");
 #endif
-}
-
-int sub_vs(v_container<short> &vs) {
-  const size_t vs_len = vs.size();
-
-  if (vs_len == 0)
-    return 0;
-
-  size_t sub_idx = 1;
-  size_t last_idx = vs_len - sub_idx;
-  short last_digit = 0;
-  while ((last_digit = vs[last_idx]) < 1) {
-    if (last_idx == 0)
-      return 0;
-
-    sub_idx++;
-
-    last_idx = vs_len - sub_idx;
-  }
-
-  vs[last_idx] = last_digit - 1;
-
-  while (sub_idx > 1) {
-    sub_idx--;
-    last_idx = vs_len - sub_idx;
-
-    vs[last_idx] = 9;
-  }
-
-  // if (vs.front() == 0) {
-  //   vs.erase(vs.begin());
-  // }
-
-  return 1;
-}
-
-int add_vs(v_container<short> &vs) {
-#ifdef CAPABILITY_PUSH_FRONT
-  size_t vs_len = vs.size();
-#else
-  const size_t vs_len = vs.size();
-#endif
-
-  size_t sub_idx = 1;
-  size_t last_idx = vs_len - sub_idx;
-  short last_digit = 9;
-  while ((last_digit = vs[last_idx]) == 9) {
-    sub_idx++;
-
-    if (last_idx == 0) {
-#ifdef CAPABILITY_PUSH_FRONT
-      vs.push_front(0);
-      vs_len = vs.size();
-#else
-      // !TODO: resize logic, possibly creating new vector and copy everything
-      // from the old one
-      throw std::overflow_error("Container size doesn't support push_front and "
-                                "is not large enough to contain more digit");
-#endif
-    }
-
-    last_idx = vs_len - sub_idx;
-  }
-
-  vs[last_idx] = last_digit + 1;
-
-  while (sub_idx > 1) {
-    sub_idx--;
-    last_idx = vs_len - sub_idx;
-
-    vs[last_idx] = 0;
-  }
-
-  return 1;
 }
 
 // check whether string number a is bigger than b
@@ -220,15 +152,15 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
 }
 
 std::string intinfinity_t_to_string(const intinfinity_t &i) {
-  std::string result = "";
+  std::string result = i.negative ? "-" : "";
 
   bool first_idx = true;
   for (const short s : i._v_s) {
     if (first_idx) {
-      first_idx = false;
-
       if (s == 0)
         continue;
+
+      first_idx = false;
     }
 
     result += std::to_string(s);
@@ -237,8 +169,12 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
   return result;
 }
 
-int add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
-                 const short bi) {
+// sum `vs` digit at index `i` with `bi`, automatically add second digit of the
+// result to the next index in `vs`, this function doesn't alter `vs` size in
+// any way as it should have been pre-allocated
+int add_digit_at(intinfinity_t &vs, const size_t &i, const short bi) {
+  const short ai = vs._v_s[i];
+
   const short ri = ai + bi;
   const bool ri2digit = ri > 9;
 
@@ -255,7 +191,7 @@ int add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
     }
 
     const size_t next_idx = i - 1;
-    return add_digit_at(vs, next_idx, vs._v_s[next_idx], 1);
+    return add_digit_at(vs, next_idx, 1);
   }
 
   return 0;
@@ -307,7 +243,7 @@ std::string add(const std::string &a, const std::string &b) {
     const short ai = a_v._v_s[a_idx];
     const short bi = b_v._v_s[i];
 
-    if (add_digit_at(a_v, a_idx, ai, bi))
+    if (add_digit_at(a_v, a_idx, bi))
       break;
 
     if (i == 0)
