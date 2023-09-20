@@ -179,7 +179,7 @@ int add_vs(v_container<short> &vs) {
   return 1;
 }
 
-// both str length should be equal
+// check whether string number a is bigger than b
 bool is_bigger_than_str(const std::string &a, const std::string &b) {
   const size_t a_len = a.length();
   const size_t b_len = b.length();
@@ -211,7 +211,7 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
     return false;
   }
 
-  // both str are equal
+  // both string number are equal
   return false;
 }
 
