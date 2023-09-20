@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <deque>
-#include <stdexcept>
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -19,18 +18,10 @@
 
 #endif
 
-// try to have signed type here,
-// we would want to have subtraction too
-// later on!
-// #ifndef INTEGER_TYPE_MAX
-//
-// #define INTEGER_TYPE_MAX INT64_MAX
-//
-// #endif
-//
-// static inline const std::string integer_type_max_str =
-//     std::to_string(INTEGER_TYPE_MAX);
+// we would want to have subtraction, multiplication and division too later on!
 
+// simply container for data
+// no method allowed!
 struct intinfinity_t {
   v_container<short> _v_s;
   bool negative;
@@ -65,12 +56,13 @@ bool is_char_int(const char &c) {
   return false;
 }
 
-int str_to_vs(intinfinity_t &container, const std::string &str) {
+// init container with a string of number, returns 0 on success
+int intinfinity_t_init(intinfinity_t &container, const std::string &str) {
   // initialize negative member
   container.negative = false;
 
   // add a digit in front to make sure there's enough space
-  // in the container
+  // in the container for one time addition operation
   v_container<short> result(str.length() + 1);
 
   bool first_idx = true;
@@ -121,32 +113,28 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
 
   if (a_len == b_len) {
     // both string length are the same, compare per digit
+    // any digit difference decides which one is bigger here
     for (size_t i = 0; i < a_len; i++) {
-      const char &ac = a[i];
-      const char &bc = b[i];
+      const int ai = a[i] - '0';
+      const int bi = b[i] - '0';
 
-      const int ai = ac - '0';
-      const int bi = bc - '0';
-
+      // compare current digit
       if (ai > bi)
         return true;
 
       if (ai < bi)
         return false;
+
+      // else compare next digit
     }
   }
 
-  if (a_len > b_len) {
+  else if (a_len > b_len) {
     // a is indeed bigger than b
     return true;
   }
 
-  if (a_len < b_len) {
-    // nope
-    return false;
-  }
-
-  // both string number are equal
+  // a is smaller or equal to b
   return false;
 }
 
@@ -174,7 +162,8 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
 // sum `vs` digit at index `i` with `bi`, automatically add second digit of the
 // result to the next index in `vs`, this function doesn't alter `vs` size in
 // any way as it should have been pre-allocated
-int add_digit_at(intinfinity_t &vs, const size_t &i, const short bi) {
+int intinfinity_t_add_digit_at(intinfinity_t &vs, const size_t &i,
+                               const short bi) {
   const short ai = vs._v_s[i];
 
   const short ri = ai + bi;
@@ -184,16 +173,21 @@ int add_digit_at(intinfinity_t &vs, const size_t &i, const short bi) {
 
   if (ri2digit) {
     if (i == 0) {
-      // this should never possibly happen!! check your logic!
+      // this should never possibly happen unless addition called more than once
+      // to the same container!! check your logic!
+      // !TODO: add resize function
 
-      fprintf(stderr, "add: vector overflow: index reached 0: %zu\n",
-              vs._v_s.size());
+      static constexpr const char e[] = "add: vector overflow: index reached 0";
+
+      vs.err = e;
+
+      fprintf(stderr, "%s: %zu\n", e, vs._v_s.size());
 
       return 1;
     }
 
     const size_t next_idx = i - 1;
-    return add_digit_at(vs, next_idx, 1);
+    return intinfinity_t_add_digit_at(vs, next_idx, 1);
   }
 
   return 0;
@@ -214,15 +208,16 @@ std::string add(const std::string &a, const std::string &b) {
 
   intinfinity_t a_v;
   intinfinity_t b_v;
+
   int status = 0;
-  status = str_to_vs(a_v, bigger_n);
+  status = intinfinity_t_init(a_v, bigger_n);
   if (status) {
-    intinfinity_t_printerr("str_to_vs", a_v);
+    intinfinity_t_printerr("intinfinity_t_init a", a_v);
     return "";
   }
-  status = str_to_vs(b_v, smaller_n);
+  status = intinfinity_t_init(b_v, smaller_n);
   if (status) {
-    intinfinity_t_printerr("str_to_vs", b_v);
+    intinfinity_t_printerr("intinfinity_t_init b", b_v);
     return "";
   }
 
@@ -245,7 +240,7 @@ std::string add(const std::string &a, const std::string &b) {
     const short ai = a_v._v_s[a_idx];
     const short bi = b_v._v_s[i];
 
-    if (add_digit_at(a_v, a_idx, bi))
+    if (intinfinity_t_add_digit_at(a_v, a_idx, bi))
       break;
 
     if (i == 0)
