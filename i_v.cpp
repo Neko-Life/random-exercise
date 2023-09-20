@@ -66,6 +66,9 @@ bool is_char_int(const char &c) {
 }
 
 int str_to_vs(intinfinity_t &container, const std::string &str) {
+  // initialize negative member
+  container.negative = false;
+
   // add a digit in front to make sure there's enough space
   // in the container
   v_container<short> result(str.length() + 1);
@@ -97,10 +100,6 @@ int str_to_vs(intinfinity_t &container, const std::string &str) {
 
   container._v_s = result;
   container.is_valid = true;
-
-  // initialize negative member
-  if (container.negative != true)
-    container.negative = false;
 
   return 0;
 }
@@ -165,6 +164,9 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
 
     result += std::to_string(s);
   }
+
+  if (!result.length())
+    result += '0';
 
   return result;
 }
