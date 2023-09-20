@@ -1,4 +1,4 @@
-#define V3
+#define V4
 
 #ifdef V1
 
@@ -261,6 +261,96 @@ public:
       result.insert(result.begin(), carry);
     }
     return BigInt(result);
+  }
+};
+
+#endif
+
+#ifdef V4
+
+#include <algorithm>
+#include <climits>
+#include <cmath>
+#include <iostream>
+#include <vector>
+
+class BigInt {
+private:
+  const long long int DIGITS_PER_CELL =
+      static_cast<long long int>(log10(LLONG_MAX));
+  const long long int biggest_cell_value = std::pow(10, DIGITS_PER_CELL) - 1;
+  std::vector<long long int> value;
+
+public:
+  void print() {
+    std::cout << "[";
+    for (auto i : value) {
+      std::cout << i << ',';
+    }
+    std::cout << "]\n";
+  }
+  BigInt(const std::string &string) {
+    auto length = static_cast<long long int>(string.length());
+    value.resize(length / DIGITS_PER_CELL + (length % DIGITS_PER_CELL ? 1 : 0));
+    size_t cnt = 0;
+    for (long long int i = length; i > 0; i -= DIGITS_PER_CELL) {
+      int numDigits = std::min(DIGITS_PER_CELL, static_cast<long long int>(i));
+      auto temp = string.substr(i - numDigits, numDigits);
+      value[cnt] = (std::stoll(temp));
+      cnt++;
+    }
+  }
+
+  BigInt(const std::vector<long long int> &v) { value = v; }
+
+  operator std::string() const {
+    if (value.empty()) {
+      return "0";
+    }
+    std::string result;
+    result.reserve(std::to_string(value[0]).size() +
+                   (value.size() - 1) * DIGITS_PER_CELL);
+    result += std::to_string(value.back());
+    for (auto it = value.rbegin() + 1; it != value.rend(); ++it) {
+      std::string cell_str = std::to_string(*it);
+      while (cell_str.length() < DIGITS_PER_CELL) {
+        cell_str = "0" + cell_str;
+      }
+      result += cell_str;
+    }
+
+    return result;
+  }
+
+  friend std::ostream &operator<<(std::ostream &out, const BigInt &n) {
+    return out << std::string(n);
+  }
+
+  BigInt operator+(const BigInt &other) {
+    std::vector<long long int> r;
+    long long int buffer = 0;
+    size_t min_l = std::min(value.size(), other.value.size());
+    for (size_t i = 0; i < min_l; i++) {
+      long long int sum = value[i] + other.value[i] + buffer;
+      r.push_back(sum % biggest_cell_value);
+      buffer = std::max(sum - biggest_cell_value, 0ll);
+    }
+
+    const std::vector<long long int> &max_r =
+        (value.size() > other.value.size()) ? value : other.value;
+
+    for (size_t i = min_l; i < max_r.size(); i++) {
+      long long int sum = max_r[i] + buffer;
+      r.push_back(sum % biggest_cell_value);
+      buffer = std::max(sum - biggest_cell_value, 0ll);
+    }
+
+    while (buffer > 0) {
+      r.push_back(buffer % biggest_cell_value);
+      buffer -= biggest_cell_value;
+    }
+
+    return BigInt(r);
   }
 };
 
