@@ -45,16 +45,9 @@ void intinfinity_t_printerr(const char *dbg, intinfinity_t &i) {
   fprintf(stderr, "%s: %s\n", dbg, intinfinity_t_get_err(i).c_str());
 }
 
-bool is_char_int(const char &c) {
-  static constexpr const char int_chars[] = "0123456789";
+bool is_char_int(char c) { return (c >= '0' && c <= '9'); }
 
-  for (const char &ic : int_chars) {
-    if (ic == c)
-      return true;
-  }
-
-  return false;
-}
+bool is_char_sign(char c) { return (c == '-' || c == '+'); }
 
 // !TODO: reset function to simply reset and initialize container to default
 // values init container with a string of number, returns 0 on success
@@ -68,7 +61,7 @@ int intinfinity_t_init(intinfinity_t &container, const std::string &str) {
 
   bool first_idx = true;
   size_t idx = 1;
-  for (const char &c : str) {
+  for (char c : str) {
     if (first_idx) {
       first_idx = false;
 
@@ -107,24 +100,78 @@ void print_vs(const intinfinity_t &vs) {
 #endif
 }
 
+// make str a proper number without leading zeroes
+int strip_front_zeroes(std::string &str) {
+  const size_t str_length = str.length();
+  if (!str_length)
+    return -1;
+
+  char sign = 0;
+
+  if (is_char_sign(str[0])) {
+    sign = str[0];
+  }
+
+  for (size_t i = 0; i < str_length; i++) {
+    char c = str[i];
+    if (!is_char_int(c) || c == '0')
+      continue;
+
+    str = str.substr(i);
+
+    if (sign != 0)
+      str = sign + str;
+    break;
+  }
+
+  return 0;
+}
+
 // check whether string number a is bigger than b
-bool is_bigger_than_str(const std::string &a, const std::string &b) {
-  const size_t a_len = a.length();
-  const size_t b_len = b.length();
+// return 1 if true, else 0 and -1 if err
+// both str should be the same signedness!
+int is_bigger_than_str(const std::string &a, const std::string &b) {
+  size_t a_len = a.length();
+  if (!a_len)
+    return -1;
+  unsigned short a_base_idx = 0;
+
+  if (is_char_sign(a[0])) {
+    a_len--;
+    a_base_idx++;
+  }
+
+  size_t b_len = b.length();
+  if (!b_len)
+    return -1;
+  unsigned short b_base_idx = 0;
+
+  if (is_char_sign(b[0])) {
+    b_len--;
+    b_base_idx++;
+  }
 
   if (a_len == b_len) {
     // both string length are the same, compare per digit
     // any digit difference decides which one is bigger here
     for (size_t i = 0; i < a_len; i++) {
-      const int ai = a[i] - '0';
-      const int bi = b[i] - '0';
+      char ca = a[i + a_base_idx];
+      if (!is_char_int(ca))
+        return -1;
+
+      char cb = b[i + b_base_idx];
+      if (!is_char_int(cb))
+        return -1;
+
+      const int ai = ca - '0';
+      const int bi = cb - '0';
 
       // compare current digit
       if (ai > bi)
-        return true;
+        return 1;
 
       if (ai < bi)
-        return false;
+        return 0;
 
       // else compare next digit
     }
@@ -132,11 +179,11 @@ bool is_bigger_than_str(const std::string &a, const std::string &b) {
 
   else if (a_len > b_len) {
     // a is indeed bigger than b
-    return true;
+    return 1;
   }
 
   // a is smaller or equal to b
-  return false;
+  return 0;
 }
 
 std::string intinfinity_t_to_string(const intinfinity_t &i) {
@@ -194,13 +241,23 @@ int intinfinity_t_add_digit_at(intinfinity_t &vs, const size_t &i,
   return 0;
 }
 
-std::string add(const std::string &a, const std::string &b) {
+std::string add(std::string &a, std::string &b) {
+  int status = 0;
+
+  // validate
+  strip_front_zeroes(a);
+  strip_front_zeroes(b);
+
   // check whether a and b should be swapped, for better performance, the
   // smaller gets added to the bigger
   bool swap = false;
-  if (is_bigger_than_str(b, a)) {
-    swap = true;
+  if ((status = is_bigger_than_str(b, a)) == -1) {
+    fprintf(stderr, "add: is_bigger_than_str: invalid string number\n");
+    return "";
   }
+
+  if (status == 1)
+    swap = true;
 
   // with the swap logic, a_v should always contain the bigger
   // number than b_v
@@ -210,7 +267,6 @@ std::string add(const std::string &a, const std::string &b) {
   intinfinity_t a_v;
   intinfinity_t b_v;
 
-  int status = 0;
   status = intinfinity_t_init(a_v, bigger_n);
   if (status) {
     intinfinity_t_printerr("intinfinity_t_init a", a_v);
@@ -255,7 +311,10 @@ std::string add(const std::string &a, const std::string &b) {
 }
 
 int main(const int argc, const char *argv[]) {
-  const std::string result = add(argv[1], argv[2]);
+
+  std::string a(argv[1]);
+  std::string b(argv[2]);
+  const std::string result = add(a, b);
 
   printf("result: %s\n", result.c_str());
   /* assert(result == "5000"); */
