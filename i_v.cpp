@@ -60,8 +60,10 @@ bool is_char_int(const char &c) {
   return false;
 }
 
-void str_to_vs(intinfinity_t &container, const std::string &str) {
-  v_container<short> result;
+int str_to_vs(intinfinity_t &container, const std::string &str) {
+  // add a digit in front to make sure there's enough space
+  // in the container
+  v_container<short> result(1);
 
   bool first_idx = true;
   for (const char &c : str) {
@@ -78,10 +80,10 @@ void str_to_vs(intinfinity_t &container, const std::string &str) {
       }
     }
 
-    if (is_char_int(c)) {
+    if (!is_char_int(c)) {
       container.is_valid = false;
       container.err = std::string("Invalid integer: ") + c;
-      return;
+      return 1;
     };
 
     result.push_back(c - '0');
@@ -89,6 +91,7 @@ void str_to_vs(intinfinity_t &container, const std::string &str) {
 
   container._v_s = result;
   container.is_valid = true;
+  return 0;
 }
 
 void print_vs(const intinfinity_t &vs) {
@@ -227,8 +230,8 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
   return result;
 }
 
-void add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
-                  const short bi) {
+int add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
+                 const short bi) {
   const short ri = ai + bi;
   const bool ri2digit = ri > 9;
 
@@ -241,12 +244,14 @@ void add_digit_at(intinfinity_t &vs, const size_t &i, const short ai,
       fprintf(stderr, "add: vector overflow: index reached 0: %zu\n",
               vs._v_s.size());
 
-      return;
+      return 1;
     }
 
     const size_t next_idx = i - 1;
-    add_digit_at(vs, next_idx, vs._v_s[next_idx], 1);
+    return add_digit_at(vs, next_idx, vs._v_s[next_idx], 1);
   }
+
+  return 0;
 }
 
 std::string add(const std::string &a, const std::string &b) {
@@ -263,14 +268,14 @@ std::string add(const std::string &a, const std::string &b) {
   const std::string &smaller_n = swap ? a : b;
 
   intinfinity_t a_v;
-  // we store the result in a_v, so add a digit in front
-  // as we know a_v is always bigger than b_v, the resulting
-  // value can never be bigger than a_v*2
-  a_v._v_s.reserve(1);
-
   intinfinity_t b_v;
-  str_to_vs(a_v, bigger_n);
-  str_to_vs(b_v, smaller_n);
+  int status = 0;
+  status = str_to_vs(a_v, bigger_n);
+  if (status)
+    return "";
+  status = str_to_vs(b_v, smaller_n);
+  if (status)
+    return "";
 
   print_vs(a_v);
   print_vs(b_v);
@@ -291,7 +296,8 @@ std::string add(const std::string &a, const std::string &b) {
     const short ai = a_v._v_s[a_idx];
     const short bi = b_v._v_s[i];
 
-    add_digit_at(a_v, a_idx, ai, bi);
+    if (add_digit_at(a_v, a_idx, ai, bi))
+      break;
 
     if (i == 0)
       break;
