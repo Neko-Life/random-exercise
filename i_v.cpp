@@ -188,6 +188,7 @@ int is_bigger_than_str(const std::string &a, const std::string &b) {
 
 std::string intinfinity_t_to_string(const intinfinity_t &i) {
   std::string result = i.negative ? "-" : "";
+  result.reserve(i._v_s.size() + 1);
 
   bool first_idx = true;
   for (const short s : i._v_s) {
@@ -198,7 +199,7 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
       first_idx = false;
     }
 
-    result += std::to_string(s);
+    result += (s + '0');
   }
 
   if (!result.length())
