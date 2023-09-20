@@ -37,7 +37,7 @@ struct intinfinity_t {
   std::string err;
 };
 
-std::string inintinfinity_t_get_err(intinfinity_t &i) {
+std::string intinfinity_t_get_err(intinfinity_t &i) {
   if (!i.err.length()) {
     return i.err;
   }
@@ -151,6 +151,8 @@ int add_vs(v_container<short> &vs) {
       vs.push_front(0);
       vs_len = vs.size();
 #else
+      // !TODO: resize logic, possibly creating new vector and copy everything
+      // from the old one
       throw std::overflow_error("Container size doesn't support push_front and "
                                 "is not large enough to contain more digit");
 #endif
@@ -263,4 +265,8 @@ int main(const int argc, const char *argv[]) {
    666
    444
    1110
+
+   9999
+   1111
+   11110
 */
