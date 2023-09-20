@@ -50,6 +50,10 @@ std::string intinfinity_t_get_err(intinfinity_t &i) {
   return ret;
 }
 
+void intinfinity_t_printerr(const char *dbg, intinfinity_t &i) {
+  fprintf(stderr, "%s: %s\n", dbg, intinfinity_t_get_err(i).c_str());
+}
+
 bool is_char_int(const char &c) {
   static constexpr const char int_chars[] = "0123456789";
 
@@ -274,11 +278,15 @@ std::string add(const std::string &a, const std::string &b) {
   intinfinity_t b_v;
   int status = 0;
   status = str_to_vs(a_v, bigger_n);
-  if (status)
+  if (status) {
+    intinfinity_t_printerr("str_to_vs", a_v);
     return "";
+  }
   status = str_to_vs(b_v, smaller_n);
-  if (status)
+  if (status) {
+    intinfinity_t_printerr("str_to_vs", b_v);
     return "";
+  }
 
   print_vs(a_v);
   print_vs(b_v);
