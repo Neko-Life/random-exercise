@@ -56,7 +56,8 @@ bool is_char_int(const char &c) {
   return false;
 }
 
-// init container with a string of number, returns 0 on success
+// !TODO: reset function to simply reset and initialize container to default
+// values init container with a string of number, returns 0 on success
 int intinfinity_t_init(intinfinity_t &container, const std::string &str) {
   // initialize negative member
   container.negative = false;
