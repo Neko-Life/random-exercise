@@ -23,7 +23,7 @@
 // simply container for data
 // no method allowed!
 struct intinfinity_t {
-  v_container<short> _v_s;
+  v_container<int> _v_s;
   bool negative;
   bool is_valid;
   std::string err;
@@ -34,7 +34,7 @@ std::string intinfinity_t_get_err(intinfinity_t &i) {
     return i.err;
   }
 
-  const std::string ret = i.err;
+  std::string ret = i.err;
 
   i.err = "";
 
@@ -57,7 +57,7 @@ int intinfinity_t_init(intinfinity_t &container, const std::string &str) {
 
   // add a digit in front to make sure there's enough space
   // in the container for one time addition operation
-  v_container<short> result(str.length() + 1);
+  v_container<int> result(str.length() + 1);
 
   bool first_idx = true;
   size_t idx = 1;
@@ -92,7 +92,7 @@ int intinfinity_t_init(intinfinity_t &container, const std::string &str) {
 
 void print_vs(const intinfinity_t &vs) {
 #ifdef MY_DEBUG
-  for (const short s : vs._v_s) {
+  for (const int s : vs._v_s) {
     fprintf(stderr, "%d ", s);
   }
 
@@ -102,7 +102,7 @@ void print_vs(const intinfinity_t &vs) {
 
 // make str a proper number without leading zeroes
 int strip_front_zeroes(std::string &str) {
-  const size_t str_length = str.length();
+  size_t str_length = str.length();
   if (!str_length)
     return -1;
 
@@ -134,7 +134,7 @@ int is_bigger_than_str(const std::string &a, const std::string &b) {
   size_t a_len = a.length();
   if (!a_len)
     return -1;
-  unsigned short a_base_idx = 0;
+  unsigned int a_base_idx = 0;
 
   if (is_char_sign(a[0])) {
     a_len--;
@@ -144,7 +144,7 @@ int is_bigger_than_str(const std::string &a, const std::string &b) {
   size_t b_len = b.length();
   if (!b_len)
     return -1;
-  unsigned short b_base_idx = 0;
+  unsigned int b_base_idx = 0;
 
   if (is_char_sign(b[0])) {
     b_len--;
@@ -163,8 +163,8 @@ int is_bigger_than_str(const std::string &a, const std::string &b) {
       if (!is_char_int(cb))
         return -1;
 
-      const int ai = ca - '0';
-      const int bi = cb - '0';
+      int ai = ca - '0';
+      int bi = cb - '0';
 
       // compare current digit
       if (ai > bi)
@@ -191,7 +191,7 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
   result.reserve(i._v_s.size() + 1);
 
   bool first_idx = true;
-  for (const short s : i._v_s) {
+  for (int s : i._v_s) {
     if (first_idx) {
       if (s == 0)
         continue;
@@ -211,12 +211,11 @@ std::string intinfinity_t_to_string(const intinfinity_t &i) {
 // sum `vs` digit at index `i` with `bi`, automatically add second digit of the
 // result to the next index in `vs`, this function doesn't alter `vs` size in
 // any way as it should have been pre-allocated
-int intinfinity_t_add_digit_at(intinfinity_t &vs, const size_t &i,
-                               const short bi) {
-  const short ai = vs._v_s[i];
+int intinfinity_t_add_digit_at(intinfinity_t &vs, size_t i, int bi) {
+  int ai = vs._v_s[i];
 
-  const short ri = ai + bi;
-  const bool ri2digit = ri > 9;
+  int ri = ai + bi;
+  bool ri2digit = ri > 9;
 
   vs._v_s[i] = ri > 0 ? ri % 10 : 0;
 
@@ -235,7 +234,7 @@ int intinfinity_t_add_digit_at(intinfinity_t &vs, const size_t &i,
       return 1;
     }
 
-    const size_t next_idx = i - 1;
+    size_t next_idx = i - 1;
     return intinfinity_t_add_digit_at(vs, next_idx, 1);
   }
 
@@ -290,13 +289,13 @@ std::string add(std::string &a, std::string &b) {
      a = b + diff
    */
 
-  const size_t idx_diff = a_v._v_s.size() - b_v._v_s.size();
+  size_t idx_diff = a_v._v_s.size() - b_v._v_s.size();
 
   for (size_t i = (b_v._v_s.size() - 1); i >= 0; i--) {
-    const size_t a_idx = i + idx_diff;
+    size_t a_idx = i + idx_diff;
 
-    const short ai = a_v._v_s[a_idx];
-    const short bi = b_v._v_s[i];
+    int ai = a_v._v_s[a_idx];
+    int bi = b_v._v_s[i];
 
     if (intinfinity_t_add_digit_at(a_v, a_idx, bi))
       break;
@@ -311,11 +310,11 @@ std::string add(std::string &a, std::string &b) {
   return intinfinity_t_to_string(a_v);
 }
 
-int main(const int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
 
   std::string a(argv[1]);
   std::string b(argv[2]);
-  const std::string result = add(a, b);
+  std::string result = add(a, b);
 
   printf("result: %s\n", result.c_str());
   /* assert(result == "5000"); */
