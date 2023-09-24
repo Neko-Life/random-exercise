@@ -35,3 +35,6 @@ i_v: i_v.cpp
 
 ilesik-big-num: ilesik-big-num.cpp
 	g++ -g ilesik-big-num.cpp -o ilesik-big-num
+
+hex_to_str: ilesik-big-num.cpp
+	g++ -g hex_to_str.cpp -o hex_to_str
